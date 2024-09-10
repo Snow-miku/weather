@@ -15,6 +15,7 @@
         <module>gateway</module>
         <module>search</module>
         <module>config</module>
+        <module>university</module>
     </modules>
 
     <groupId>com.example</groupId>
