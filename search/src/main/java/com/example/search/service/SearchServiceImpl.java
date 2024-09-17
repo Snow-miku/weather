@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.Collections;
+import java.util.concurrent.ExecutionException;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -25,51 +25,58 @@ public class SearchServiceImpl implements SearchService {
         this.restTemplate = restTemplate;
     }
 
-    // Call the weather service by city name asynchronously
-    @HystrixCommand(fallbackMethod = "fallbackWeatherByCity")
-    private CompletableFuture<List<Integer>> getWeatherByCity(String city) {
-        return CompletableFuture.supplyAsync(() ->
-                restTemplate.getForObject(detailsByCityUrl, List.class, city)
-        );
+    // Asynchronously call /details endpoint
+    @HystrixCommand(fallbackMethod = "fallbackGetDetailsByCity")
+    private CompletableFuture<List<Integer>> getDetailsByCity(String city) {
+        return CompletableFuture.supplyAsync(() -> restTemplate.getForObject(detailsByCityUrl, List.class, city));
     }
 
-    // Call the weather port service asynchronously
-    @HystrixCommand(fallbackMethod = "fallbackWeatherPort")
-    private CompletableFuture<String> getWeatherPort() {
-        return CompletableFuture.supplyAsync(() ->
-                restTemplate.getForObject(detailsPortUrl, String.class)
-        );
+    // Asynchronously call /details/port endpoint
+    @HystrixCommand(fallbackMethod = "fallbackGetDetailsPort")
+    private CompletableFuture<String> getDetailsPort() {
+        return CompletableFuture.supplyAsync(() -> restTemplate.getForObject(detailsPortUrl, String.class));
     }
 
-    // Fallback method for weather by city
-    private List<Integer> fallbackWeatherByCity(String city) {
-        System.out.println("Fallback for city: " + city);
-        return Collections.emptyList();
+    // Fallback method for getDetailsByCity
+    private CompletableFuture<List<Integer>> fallbackGetDetailsByCity(String city, Throwable throwable) {
+        System.out.println("Fallback for getDetailsByCity: " + throwable.getMessage());
+        return CompletableFuture.completedFuture(null);
     }
 
-    // Fallback method for weather port
-    private String fallbackWeatherPort() {
-        return "Weather port service is unavailable";
+    // Fallback method for getDetailsPort
+    private CompletableFuture<String> fallbackGetDetailsPort(Throwable throwable) {
+        System.out.println("Fallback for getDetailsPort: " + throwable.getMessage());
+        return CompletableFuture.completedFuture("Details service is unavailable");
     }
 
-    // Merge results from both services and return a GeneralResponse
-    public GeneralResponse getMergedDetails(String city) throws InterruptedException, java.util.concurrent.ExecutionException {
-        // Fetch the weather by city and the port asynchronously
-        CompletableFuture<List<Integer>> weatherByCityFuture = getWeatherByCity(city);
-        CompletableFuture<String> weatherPortFuture = getWeatherPort();
+    @Override
+    public GeneralResponse getMergedDetails(String city) {
+        try {
+            // Start both asynchronous calls
+            CompletableFuture<List<Integer>> detailsFuture = getDetailsByCity(city);
+            CompletableFuture<String> portFuture = getDetailsPort();
 
-        System.out.println("imhere: " + city);
+            // Wait for both futures to complete
+            CompletableFuture.allOf(detailsFuture, portFuture).join();
 
-        // Wait for both futures to complete
-        List<Integer> weatherByCity = weatherByCityFuture.get();
-        String weatherPort = weatherPortFuture.get();
+            // Retrieve the results
+            List<Integer> cityIds = detailsFuture.get();
+            String detailsPort = portFuture.get();
 
-        // Create and return a GeneralResponse with merged results
-        GeneralResponse response = new GeneralResponse();
-        response.setCode(200);
-        response.setTimestamp(new Date());
-        response.setData("City IDs: " + weatherByCity + ", Service Port: " + weatherPort);
+            // Merge results into GeneralResponse
+            GeneralResponse response = new GeneralResponse();
+            response.setCode(200);
+            response.setTimestamp(new Date());
+            response.setData("City IDs: " + cityIds + ", Details Service Port: " + detailsPort);
 
-        return response;
+            return response;
+        } catch (InterruptedException | ExecutionException e) {
+            // Handle exceptions and return a fallback response
+            GeneralResponse response = new GeneralResponse();
+            response.setCode(500);
+            response.setTimestamp(new Date());
+            response.setData("Error fetching data: " + e.getMessage());
+            return response;
+        }
     }
 }
