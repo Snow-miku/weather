@@ -4,13 +4,13 @@ import com.example.search.service.SearchService;
 import com.example.common.domain.GeneralResponse;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import java.util.concurrent.ExecutionException;
 
 @RestController
+@RequestMapping("/weather")
 public class SearchController {
     private final SearchService searchService;
 
@@ -19,13 +19,8 @@ public class SearchController {
         this.searchService = searchService;
     }
 
-    @GetMapping("/weather/search")
-    public ResponseEntity<?> getDetails() {
-        try {
-            GeneralResponse response = searchService.getMergedDetails("seattle");
-            return new ResponseEntity<>(response, HttpStatus.OK);
-        } catch (InterruptedException | ExecutionException e) {
-            return new ResponseEntity<>("Error fetching data", HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+    @GetMapping("/search")
+    public GeneralResponse getDetails(@RequestParam String city) {
+        return searchService.getMergedDetails(city);
     }
 }
